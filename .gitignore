@@ -7,3 +7,6 @@ doc/*
 Vagrantfile
 puppet/*
 *.gem
+*.swp
+*.un~
+*~
