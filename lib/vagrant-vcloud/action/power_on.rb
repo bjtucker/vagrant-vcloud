@@ -13,7 +13,7 @@ module VagrantPlugins
           cfg = env[:machine].provider_config
           cnx = cfg.vcloud_cnx.driver
 
-          env[:ui].info('Booting VM...')
+          env[:ui].info('Powering on VM...')
 
           poweron_vm = cnx.poweron_vm(env[:machine].id)
           cnx.wait_task_completion(poweron_vm)
