@@ -1884,6 +1884,20 @@ module VagrantPlugins
         end
 
         ##
+        # Enable VM Nested Hardware-Assisted Virtualization
+        def set_vm_nested_hypervisor(vm_id, enable)
+          action = enable ? "enable" : "disable"
+          params = {
+            'method'  => :post,
+            'command' => "/vApp/vm-#{vm_id}/action/#{action}NestedHypervisor"
+          }
+
+          _response, headers = send_request(params)
+          task_id = headers['Location'].gsub("#{@api_url}/task/", '')
+          task_id
+        end
+
+        ##
         # Set memory and number of cpus in virtualHardwareSection of a given vm
         # returns task_id or nil if there is no task to wait for
         def set_vm_hardware(vm_id, cfg)

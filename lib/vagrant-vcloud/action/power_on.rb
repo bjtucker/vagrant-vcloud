@@ -20,6 +20,13 @@ module VagrantPlugins
             cnx.wait_task_completion(set_vm_hardware)
           end
 
+          if ! cfg.nested_hypervisor.nil?
+            set_vm_nested_hypervisor = cnx.set_vm_nested_hypervisor(env[:machine].id, cfg.nested_hypervisor)
+            if set_vm_nested_hypervisor
+              cnx.wait_task_completion(set_vm_nested_hypervisor)
+            end
+          end
+
           env[:ui].info('Powering on VM...')
 
           poweron_vm = cnx.poweron_vm(env[:machine].id)
