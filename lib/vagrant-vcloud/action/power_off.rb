@@ -22,7 +22,8 @@ module VagrantPlugins
 
           # Poweroff VM
           env[:ui].info('Powering off VM...')
-          task_id = cnx.poweroff_vm(vm_id)
+          # task_id = cnx.poweroff_vm(vm_id)
+          task_id = cnx.shutdown_vm(vm_id)
           cnx.wait_task_completion(task_id)
 
           @app.call env

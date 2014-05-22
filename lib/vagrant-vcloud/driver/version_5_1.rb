@@ -571,6 +571,30 @@ module VagrantPlugins
           task_id = headers['Location'].gsub("#{@api_url}/task/", '')
           task_id
         end
+        ##
+        # Shutdown a given VM
+        # Using undeploy with shutdown, without VMware Tools this WILL FAIL.
+        #
+        def shutdown_vm(vm_id)
+          builder = Nokogiri::XML::Builder.new do |xml|
+            xml.UndeployVAppParams(
+            'xmlns' => 'http://www.vmware.com/vcloud/v1.5'
+          ) { xml.UndeployPowerAction 'shutdown' }
+          end
+
+          params = {
+            'method'  => :post,
+            'command' => "/vApp/vm-#{vm_id}/action/undeploy"
+          }
+
+          _response, headers = send_request(
+            params,
+            builder.to_xml,
+            'application/vnd.vmware.vcloud.undeployVAppParams+xml'
+          )
+          task_id = headers['Location'].gsub("#{@api_url}/task/", '')
+          task_id
+        end
 
         ##
         # Suspend a given VM
