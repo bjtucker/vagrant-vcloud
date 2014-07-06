@@ -24,7 +24,7 @@ module VagrantPlugins
                 s.close
                 @logger.debug("#{port_name} Connection successful !")
                 return true
-              rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH
+              rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::EHOSTDOWN
                 @logger.debug("#{port_name} Connection Refused/Host Unreachable...")
                 return false
               end
@@ -76,8 +76,7 @@ module VagrantPlugins
             rules = cnx.get_vapp_port_forwarding_rules(vapp_id)
 
             rules.each do |rule|
-              if rule[:vapp_scoped_local_id] == myhash[:vapp_scoped_local_id] && 
-                 rule[:nat_internal_port] == "#{@port}"
+              if rule[:vapp_scoped_local_id] == myhash[:vapp_scoped_local_id] && rule[:nat_internal_port] == "#{@port}"
                 @external_ip = rule[:nat_external_ip]
                 @external_port = rule[:nat_external_port]
                 break
