@@ -314,7 +314,7 @@ module VagrantPlugins
             extheader = {}
             extheader['accept'] = "application/*+xml;version=#{@api_version}"
 
-            if !content_type.nil?
+            unless content_type.nil?
               extheader['Content-Type'] = content_type
             end
 
@@ -349,28 +349,16 @@ module VagrantPlugins
                 extheader
               )
 
-              if !response.ok?
-                msg = "Warning: unattended code #{response.status}" +
-                " #{response.reason}"
-                if response.status.to_i == 400
-                  res = Nokogiri.parse(response.body)
-                  error = res.css("Error").first
-                  message = error['message']
-                  msg = msg + ": " + message
+              unless response.ok?
+                if response.code == 400
+                  error_message = Nokogiri.parse(response.body)
+                  error = error_message.css('Error')
+                  fail Errors::InvalidRequestError,
+                       :message => error.first['message'].to_s
+                else
+                  fail Errors::UnattendedCodeError,
+                       :message => response.status
                 end
-                if @logger.level == 1
-                  ap "[#{Time.now.ctime}] <- RECV #{response.status}"
-                  ap msg
-                  ap 'RECV HEADERS'
-                  ap response.headers
-                  ap 'RECV BODY'
-                  if response.status.to_i == 400
-                    ap Nokogiri.XML(response.body)
-                  else
-                    ap respone.body
-                  end
-                end
-                raise msg
               end
 
               nicexml = Nokogiri.XML(response.body)
@@ -380,7 +368,7 @@ module VagrantPlugins
               if @logger.level == 1
                 ap "[#{Time.now.ctime}] <- RECV #{response.status}"
                 # Just avoid the task spam.
-                if !url.index('/task/')
+                unless url.index('/task/')
                   ap 'RECV HEADERS'
                   ap response.headers
                   ap 'RECV BODY'
@@ -396,10 +384,8 @@ module VagrantPlugins
               end
 
               [Nokogiri.parse(response.body), response.headers]
-            rescue SocketError
-              raise 'Impossible to connect, verify endpoint'
-            rescue Errno::EADDRNOTAVAIL
-              raise 'Impossible to connect, verify endpoint'
+            rescue SocketError, Errno::EADDRNOTAVAIL
+              raise Errors::EndpointUnavailable, :endpoint => @api_url
             end
           end
 
@@ -476,8 +462,20 @@ module VagrantPlugins
                 'Content-Length'          => range_len.to_s
               }
 
+              upload_request = "#{@host_url}#{upload_url}"
+
+              # Massive debug when LOG=DEBUG
+              # Using awesome_print to get nice XML output for better readability
+              if @logger.level == 1
+                ap "[#{Time.now.ctime}] -> SEND PUT #{upload_request}"
+                ap 'SEND HEADERS'
+                ap extheader
+                ap 'SEND BODY'
+                ap '<data omitted>'
+              end
+
               begin
-                upload_request = "#{@host_url}#{upload_url}"
+
                 # FIXME: Add debug on the return status of "connection"
                 # to enhance troubleshooting for this upload process.
                 # (tsugliani)
