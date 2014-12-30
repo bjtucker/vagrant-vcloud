@@ -98,7 +98,6 @@ module VagrantPlugins
       # @return [String]
       attr_accessor :vapp_prefix
 
-
       ##
       ## vCloud Director config runtime values
       ##
@@ -142,6 +141,77 @@ module VagrantPlugins
       # NestedHypervisor (Bool)
       attr_accessor :nested_hypervisor
 
+      # Specify a vApp name (String)
+      attr_accessor :vapp_name
+
+      # Use advanced networking settings (Bool = false)
+      attr_accessor :advanced_network
+
+      # Specify networks to add to the vApp (Hash)
+      #   networks: {
+      #     org: [ 'Organization VDC network' ],
+      #     vapp: [ {
+      #               name: 'vApp network',
+      #               ip_subnet: '172.16.4.0/255.255.255.0'
+      #           } ]
+      #   }
+      #
+      attr_accessor :networks
+
+      # Add hard disks to the VM (Array)
+      #   add_hdds: [ 20480 ]
+      #
+      attr_accessor :add_hdds
+
+      # Update / add network cards to the VM (Array)
+      # type is not updated for existing network cards
+      #   nics: [ {
+      #     type: :vmxnet3,
+      #     connected: true,
+      #     network: "vApp network",
+      #     primary: true,
+      #     ip_mode: "static",
+      #     ip: "10.10.10.1",
+      #     mac: "00:50:56:00:00:01"
+      #   } ]
+      #
+      attr_accessor :nics
+
+      # Power on the VM once created (Bool = true)
+      attr_accessor :power_on
+
+      # Attempt to connect via SSH to the VM (Bool = true)
+      attr_accessor :ssh_enabled
+
+      # Attempt to sync files to the VM (Bool = true)
+      attr_accessor :sync_enabled
+
+      # Add metadata to the vApp (Array)
+      #   metadata_vapp: [
+      #     [ 'key', 'value' ]
+      #   ]
+      #
+      attr_accessor :metadata_vapp
+
+      # Add metadata to the VM (Array)
+      #   metadata_vapp: [
+      #     [ 'key', 'value' ]
+      #   ]
+      #
+      attr_accessor :metadata_vm
+
+      # Auto answer "Yes" to upload the box to vCloud (Bool = false)
+      attr_accessor :auto_yes_for_upload
+
+      # ability to disable gc for vms without tools installed
+      attr_accessor :enable_guest_customization
+
+      # scripts to run on machine boot
+      attr_reader :guest_customization_script
+      def guest_customization_script=(script)
+        @guest_customization_script = script.encode(universal_newline: true)
+      end
+
       def validate(machine)
         errors = _detected_errors
 
@@ -165,7 +235,7 @@ module VagrantPlugins
           errors << I18n.t('vagrant_vcloud.config.vdc_name')
         end
 
-        if vdc_network_name.nil?
+        if networks.nil? && vdc_network_name.nil?
           errors << I18n.t('vagrant_vcloud.config.vdc_network_name')
         end
 

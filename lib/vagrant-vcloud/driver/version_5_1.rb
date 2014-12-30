@@ -780,78 +780,132 @@ module VagrantPlugins
         # - vapp_description: description of the target vapp
         # - vm_list: hash with IDs of the VMs used in the composing process
         # - network_config: hash of the network configuration for the vapp
-        def compose_vapp_from_vm(vdc, vapp_name, vapp_description, vm_list = {}, network_config = {})
+        def compose_vapp_from_vm(vdc, vapp_name, vapp_description, vm_list = {}, network_config = {}, _cfg)
           builder = Nokogiri::XML::Builder.new do |xml|
-          xml.ComposeVAppParams(
-            'xmlns' => 'http://www.vmware.com/vcloud/v1.5',
-            'xmlns:ovf' => 'http://schemas.dmtf.org/ovf/envelope/1',
-            'name' => vapp_name,
-            'deploy' => 'false',
-            'powerOn' => 'false') {
-            xml.Description vapp_description
-            xml.InstantiationParams {
-              xml.NetworkConfigSection {
-                xml['ovf'].Info 'Configuration parameters for logical networks'
-                xml.NetworkConfig('networkName' => network_config[:name]) {
-                  xml.Configuration {
-                    if network_config[:fence_mode] != 'bridged'
-                      xml.IpScopes {
-                      xml.IpScope {
-                        xml.IsInherited(network_config[:is_inherited] || 'false')
-                        xml.Gateway network_config[:gateway]
-                        xml.Netmask network_config[:netmask]
-                        xml.Dns1 network_config[:dns1] if network_config[:dns1]
-                        xml.Dns2 network_config[:dns2] if network_config[:dns2]
-                        xml.DnsSuffix network_config[:dns_suffix] if network_config[:dns_suffix]
-                        xml.IpRanges {
-                          xml.IpRange {
-                            xml.StartAddress network_config[:start_address]
-                            xml.EndAddress network_config[:end_address]
+            xml.ComposeVAppParams(
+              'xmlns' => 'http://www.vmware.com/vcloud/v1.5',
+              'xmlns:ovf' => 'http://schemas.dmtf.org/ovf/envelope/1',
+              'name' => vapp_name,
+              'deploy' => 'false',
+              'powerOn' => 'false') {
+              xml.Description vapp_description
+              xml.InstantiationParams {
+                xml.NetworkConfigSection {
+                  xml['ovf'].Info 'Configuration parameters for logical networks'
+                  if network_config.kind_of?(Array)
+                    network_config.each do |single_net|
+                      xml.NetworkConfig('networkName' => single_net[:name]) {
+                        xml.Configuration {
+                          if single_net[:fence_mode] != 'bridged'
+                            xml.IpScopes {
+                            xml.IpScope {
+                              xml.IsInherited(single_net[:is_inherited] || 'false')
+                              xml.Gateway single_net[:gateway]
+                              xml.Netmask single_net[:netmask]
+                              xml.Dns1 single_net[:dns1] if single_net[:dns1]
+                              xml.Dns2 single_net[:dns2] if single_net[:dns2]
+                              xml.DnsSuffix single_net[:dns_suffix] if single_net[:dns_suffix]
+                              xml.IpRanges {
+                                xml.IpRange {
+                                  xml.StartAddress single_net[:start_address]
+                                  xml.EndAddress single_net[:end_address]
+                                  }
+                                }
+                              }
+                            }
+                          end
+                          xml.ParentNetwork("href" => "#{@api_url}/network/#{single_net[:parent_network]}") if single_net[:parent_network]
+                          xml.FenceMode single_net[:fence_mode]
+                          if single_net[:fence_mode] != 'bridged'
+                            xml.Features {
+                              xml.FirewallService {
+                                xml.IsEnabled(single_net[:enable_firewall] || "false")
+                              }
+                              xml.NatService {
+                                xml.IsEnabled "true"
+                                xml.NatType "portForwarding"
+                                xml.Policy(single_net[:nat_policy_type] || "allowTraffic")
+                              }
+                            }
+                          end
+                        }
+                      }
+                    end
+                  else # network_config not an array
+                    xml.NetworkConfig('networkName' => network_config[:name]) {
+                      xml.Configuration {
+                        if network_config[:fence_mode] != 'bridged'
+                          xml.IpScopes {
+                          xml.IpScope {
+                            xml.IsInherited(network_config[:is_inherited] || 'false')
+                            xml.Gateway network_config[:gateway]
+                            xml.Netmask network_config[:netmask]
+                            xml.Dns1 network_config[:dns1] if network_config[:dns1]
+                            xml.Dns2 network_config[:dns2] if network_config[:dns2]
+                            xml.DnsSuffix network_config[:dns_suffix] if network_config[:dns_suffix]
+                            xml.IpRanges {
+                              xml.IpRange {
+                                xml.StartAddress network_config[:start_address]
+                                xml.EndAddress network_config[:end_address]
+                                }
+                              }
                             }
                           }
-                        }
+                        end
+                        xml.ParentNetwork("href" => "#{@api_url}/network/#{network_config[:parent_network]}")
+                        xml.FenceMode network_config[:fence_mode]
+                        if network_config[:fence_mode] != 'bridged'
+                          xml.Features {
+                            xml.FirewallService {
+                              xml.IsEnabled(network_config[:enable_firewall] || "false")
+                            }
+                            xml.NatService {
+                              xml.IsEnabled "true"
+                              xml.NatType "portForwarding"
+                              xml.Policy(network_config[:nat_policy_type] || "allowTraffic")
+                            }
+                          }
+                        end
                       }
-                    end
-                    xml.ParentNetwork("href" => "#{@api_url}/network/#{network_config[:parent_network]}")
-                    xml.FenceMode network_config[:fence_mode]
-                    if network_config[:fence_mode] != 'bridged'
-                      xml.Features {
-                        xml.FirewallService {
-                          xml.IsEnabled(network_config[:enable_firewall] || "false")
-                        }
-                        xml.NatService {
-                          xml.IsEnabled "true"
-                          xml.NatType "portForwarding"
-                          xml.Policy(network_config[:nat_policy_type] || "allowTraffic")
-                        }
-                      }
-                    end
-                  }
-                }
-              }
-            }
-            vm_list.each do |vm_name, vm_id|
-              xml.SourcedItem {
-                xml.Source('href' => "#{@api_url}/vAppTemplate/vm-#{vm_id}", 'name' => vm_name)
-                xml.InstantiationParams {
-                  xml.NetworkConnectionSection(
-                    'xmlns:ovf' => 'http://schemas.dmtf.org/ovf/envelope/1',
-                    'type' => 'application/vnd.vmware.vcloud.networkConnectionSection+xml',
-                    'href' => "#{@api_url}/vAppTemplate/vm-#{vm_id}/networkConnectionSection/") {
-                      xml['ovf'].Info 'Network config for sourced item'
-                      xml.PrimaryNetworkConnectionIndex '0'
-                      xml.NetworkConnection('network' => network_config[:name]) {
-                        xml.NetworkConnectionIndex '0'
-                        xml.IsConnected 'true'
-                        xml.IpAddressAllocationMode(network_config[:ip_allocation_mode] || 'POOL')
                     }
-                  }
+                end #networks
                 }
-                xml.NetworkAssignment('containerNetwork' => network_config[:name], 'innerNetwork' => network_config[:name])
               }
-            end
-            xml.AllEULAsAccepted 'true'
-          }
+              vm_list.each do |vm_name, vm_id|
+                xml.SourcedItem {
+                  xml.Source('href' => "#{@api_url}/vAppTemplate/vm-#{vm_id}", 'name' => vm_name)
+                  xml.InstantiationParams {
+                    if _cfg.enable_guest_customization.nil? || _cfg.enable_guest_customization
+                      xml.GuestCustomizationSection(
+                        'xmlns' => 'http://www.vmware.com/vcloud/v1.5',
+                        'xmlns:ovf' => 'http://schemas.dmtf.org/ovf/envelope/1') {
+                          xml['ovf'].Info 'VM Guest Customization configuration'
+                          xml.Enabled true
+                          xml.AdminPasswordEnabled false
+                          xml.CustomizationScript{ xml.cdata(_cfg.guest_customization_script) } if !_cfg.guest_customization_script.nil?
+                          xml.ComputerName vm_name
+                      }
+                    end
+                    if !_cfg.advanced_network
+                      xml.NetworkConnectionSection(
+                        'xmlns:ovf' => 'http://schemas.dmtf.org/ovf/envelope/1',
+                        'type' => 'application/vnd.vmware.vcloud.networkConnectionSection+xml',
+                        'href' => "#{@api_url}/vAppTemplate/vm-#{vm_id}/networkConnectionSection/") {
+                          xml['ovf'].Info 'Network config for sourced item'
+                          xml.PrimaryNetworkConnectionIndex '0'
+                          xml.NetworkConnection('network' => network_config[:name]) {
+                            xml.NetworkConnectionIndex '0'
+                            xml.IsConnected 'true'
+                            xml.IpAddressAllocationMode(network_config[:ip_allocation_mode] || 'POOL')
+                        }
+                      }
+                    end
+                  }
+                  xml.NetworkAssignment('containerNetwork' => network_config[:name], 'innerNetwork' => network_config[:name]) if !_cfg.advanced_network
+                }
+              end
+              xml.AllEULAsAccepted 'true'
+            }
           end
 
           params = {
@@ -883,7 +937,7 @@ module VagrantPlugins
         # - vm_list: hash with IDs of the VMs to be used in the composing process
         # - network_config: hash of the network configuration for the vapp
 
-        def recompose_vapp_from_vm(vapp_id, vm_list = {}, network_config = {})
+        def recompose_vapp_from_vm(vapp_id, vm_list = {}, network_config = {}, _cfg)
           original_vapp = get_vapp(vapp_id)
 
           builder = Nokogiri::XML::Builder.new do |xml|
@@ -894,23 +948,36 @@ module VagrantPlugins
             xml.Description original_vapp[:description]
             xml.InstantiationParams {}
             vm_list.each do |vm_name, vm_id|
-              xml.SourcedItem {
-                xml.Source('href' => "#{@api_url}/vAppTemplate/vm-#{vm_id}", 'name' => vm_name)
-                xml.InstantiationParams {
-                  xml.NetworkConnectionSection(
-                    'xmlns:ovf' => 'http://schemas.dmtf.org/ovf/envelope/1',
-                    'type' => 'application/vnd.vmware.vcloud.networkConnectionSection+xml',
-                    'href' => "#{@api_url}/vAppTemplate/vm-#{vm_id}/networkConnectionSection/") {
-                      xml['ovf'].Info 'Network config for sourced item'
-                      xml.PrimaryNetworkConnectionIndex '0'
-                      xml.NetworkConnection('network' => network_config[:name]) {
-                        xml.NetworkConnectionIndex '0'
-                        xml.IsConnected 'true'
-                        xml.IpAddressAllocationMode(network_config[:ip_allocation_mode] || 'POOL')
-                    }
+                xml.SourcedItem {
+                  xml.Source('href' => "#{@api_url}/vAppTemplate/vm-#{vm_id}", 'name' => vm_name)
+                  xml.InstantiationParams {
+                    if _cfg.enable_guest_customization.nil? || _cfg.enable_guest_customization
+                      xml.GuestCustomizationSection(
+                        'xmlns' => 'http://www.vmware.com/vcloud/v1.5',
+                        'xmlns:ovf' => 'http://schemas.dmtf.org/ovf/envelope/1') {
+                          xml['ovf'].Info 'VM Guest Customization configuration'
+                          xml.Enabled true
+                          xml.AdminPasswordEnabled false
+                          xml.CustomizationScript{ xml.cdata(_cfg.guest_customization_script) } if !_cfg.guest_customization_script.nil?
+                          xml.ComputerName vm_name
+                      }
+                    end
+                    if !_cfg.advanced_network
+                      xml.NetworkConnectionSection(
+                        'xmlns:ovf' => 'http://schemas.dmtf.org/ovf/envelope/1',
+                        'type' => 'application/vnd.vmware.vcloud.networkConnectionSection+xml',
+                        'href' => "#{@api_url}/vAppTemplate/vm-#{vm_id}/networkConnectionSection/") {
+                          xml['ovf'].Info 'Network config for sourced item'
+                          xml.PrimaryNetworkConnectionIndex '0'
+                          xml.NetworkConnection('network' => network_config[:name]) {
+                            xml.NetworkConnectionIndex '0'
+                            xml.IsConnected 'true'
+                            xml.IpAddressAllocationMode(network_config[:ip_allocation_mode] || 'POOL')
+                        }
+                      }
+                    end
                   }
-                }
-                xml.NetworkAssignment('containerNetwork' => network_config[:name], 'innerNetwork' => network_config[:name])
+                  xml.NetworkAssignment('containerNetwork' => network_config[:name], 'innerNetwork' => network_config[:name]) if !_cfg.advanced_network
               }
             end
             xml.AllEULAsAccepted 'true'
@@ -1915,6 +1982,13 @@ module VagrantPlugins
         ##
         # Enable VM Nested Hardware-Assisted Virtualization
         def set_vm_nested_hypervisor(vm_id, enable)
+          vm = get_vm(vm_id)
+          if enable && vm[:hypervisor_enabled] == 'true'
+            return nil
+          elsif !enable && vm[:hypervisor_enabled] == 'false'
+            return nil
+          end
+
           action = enable ? "enable" : "disable"
           params = {
             'method'  => :post,
@@ -1932,14 +2006,24 @@ module VagrantPlugins
         def set_vm_hardware(vm_id, cfg)
           params = {
             'method'  => :get,
-            'command' => "/vApp/vm-#{vm_id}/virtualHardwareSection"
+            'command' => "/vApp/vm-#{vm_id}/virtualHardwareSection",
+            'cacheable' => false # always get up-to-date values from vCloud
           }
 
           changed = false
+          instance_id = -1
+          hdd_address_on_parent = -1
+          hdd_parent_id = nil
+          hdd_bus_type = nil
+          hdd_bus_sub_type = nil
+          hdd_count = 0
+          nic_count = 0
+          nic_address_on_parent = -1
           response, _headers = send_request(params)
 
           response.css('ovf|Item').each do |item|
             type = item.css('rasd|ResourceType').first
+            instance_id = [ instance_id, item.css('rasd|InstanceID').first.text.to_i ].max
             if type.content == '3'
               # cpus
               if cfg.cpus
@@ -1958,7 +2042,123 @@ module VagrantPlugins
                   changed = true
                 end
               end
-            end 
+            elsif type.content == '10'
+              # network card
+              nic_address_on_parent = [ nic_address_on_parent, item.css('rasd|AddressOnParent').first.text.to_i ].max
+              next if !cfg.nics || nic_count == cfg.nics.length
+              nic = cfg.nics[nic_count]
+
+              orig_mac = item.css('rasd|Address').first.text
+              orig_ip = item.css('rasd|Connection').first['vcloud:ipAddress']
+              orig_address_mode = item.css('rasd|Connection').first['vcloud:ipAddressingMode']
+              orig_primary = item.css('rasd|Connection').first['vcloud:primaryNetworkConnection']
+              orig_network = item.css('rasd|Connection').first.text
+              # resourceSubType cannot be changed for an existing network card
+
+              if !nic[:mac].nil?
+                changed = true if nic[:mac].upcase != orig_mac.upcase
+              end
+              if !nic[:ip].nil?
+                changed = true if orig_ip.nil? || nic[:ip].upcase != orig_ip.upcase
+              end
+              changed = true if nic[:ip_mode].upcase != orig_address_mode.upcase
+              changed = true if nic[:primary] != orig_primary
+              changed = true if nic[:network].upcase != orig_network.upcase
+
+              if changed
+                item.css('rasd|Address').first.content = nic[:mac] if !nic[:mac].nil?
+                conn = item.css('rasd|Connection').first
+                conn.content = nic[:network]
+                if nic[:ip_mode].upcase == 'DHCP'
+                  conn['vcloud:ipAddressingMode'] = 'DHCP'
+                elsif nic[:ip_mode].upcase == 'STATIC'
+                  conn['vcloud:ipAddressingMode'] = 'MANUAL'
+                  conn['vcloud:ipAddress'] = nic[:ip]
+                elsif nic[:ip_mode].upcase == 'POOL'
+                  conn['vcloud:ipAddressingMode'] = 'POOL'
+                  conn['vcloud:ipAddress'] = nic[:ip] if !nic[:ip].nil?
+                end
+                conn['vcloud:primaryNetworkConnection'] = nic[:primary]
+              end
+              nic_count = nic_count + 1
+            elsif type.content == '17'
+              # hard disk
+              hdd_count = hdd_count + 1
+              if hdd_parent_id.nil?
+                hdd_parent_id = item.css('rasd|Parent').first.text
+                hdd_bus_type = item.css('rasd|HostResource').first[:busType]
+                hdd_bus_sub_type = item.css('rasd|HostResource').first[:busSubType]
+              end
+              if hdd_parent_id == item.css('rasd|Parent').first.text
+                hdd_address_on_parent = [ hdd_address_on_parent,  item.css('rasd|AddressOnParent').first.text.to_i ].max
+              end
+            end
+          end
+
+          if cfg.add_hdds
+            changed = true
+            cfg.add_hdds.each do |hdd_size|
+              hdd_address_on_parent = hdd_address_on_parent + 1
+              instance_id = instance_id + 1
+              newhdd = Nokogiri::XML::Builder.new do |xml|
+                xml.root('xmlns:rasd' => 'http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_ResourceAllocationSettingData',
+                         'xmlns:ovf' => 'http://schemas.dmtf.org/ovf/envelope/1') do
+                  xml['ovf'].Item {
+                    xml['rasd'].AddressOnParent(hdd_address_on_parent)
+                    xml['rasd'].Description("Hard disk")
+                    xml['rasd'].ElementName("Hard disk #{hdd_address_on_parent+1}")
+                    xml['rasd'].HostResource()
+                    xml['rasd'].InstanceID(instance_id)
+                    xml['rasd'].Parent(hdd_parent_id)
+                    xml['rasd'].ResourceType(17)
+                  }
+                end
+              end
+              hr = newhdd.doc.css('rasd|HostResource').first
+              hr['xmlns:vcloud'] = 'http://www.vmware.com/vcloud/v1.5'
+              hr['vcloud:busSubType'] = hdd_bus_sub_type
+              hr['vcloud:busType'] = hdd_bus_type
+              hr['vcloud:capacity'] = hdd_size
+              response.css('ovf|Item').last.add_next_sibling(newhdd.doc.css('ovf|Item'))
+            end
+          end
+
+          if cfg.nics
+            cfg.nics.each_with_index do |nic, i|
+              next if i < nic_count
+              changed = true
+              nic_address_on_parent = nic_address_on_parent + 1
+              instance_id = instance_id + 1
+              newnic = Nokogiri::XML::Builder.new do |xml|
+                xml.root('xmlns:rasd' => 'http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_ResourceAllocationSettingData',
+                         'xmlns:ovf' => 'http://schemas.dmtf.org/ovf/envelope/1') do
+                  xml['ovf'].Item {
+                    xml['rasd'].Address(nic[:mac]) if !nic[:mac].nil?
+                    xml['rasd'].AddressOnParent(nic_address_on_parent)
+                    xml['rasd'].AutomaticAllocation(true)
+                    xml['rasd'].Connection(nic[:network])
+                    xml['rasd'].Description("#{nic[:type] || :vmxnet3} ethernet adapter")
+                    xml['rasd'].ElementName("Network adapter #{nic_count}")
+                    xml['rasd'].InstanceID(instance_id)
+                    xml['rasd'].ResourceSubType(nic[:type] || :vmxnet3)
+                    xml['rasd'].ResourceType(10)
+                  }
+                end
+              end
+              conn = newnic.doc.css('rasd|Connection').first
+              conn['xmlns:vcloud'] = 'http://www.vmware.com/vcloud/v1.5'
+              if nic[:ip_mode].upcase == 'DHCP'
+                conn['vcloud:ipAddressingMode'] = 'DHCP'
+              elsif nic[:ip_mode].upcase == 'STATIC'
+                conn['vcloud:ipAddressingMode'] = 'MANUAL'
+                conn['vcloud:ipAddress'] = nic[:ip]
+              elsif nic[:ip_mode].upcase == 'POOL'
+                conn['vcloud:ipAddressingMode'] = 'POOL'
+                conn['vcloud:ipAddress'] = nic[:ip] if !nic[:ip].nil?
+              end
+              conn['vcloud:primaryNetworkConnection'] = nic[:primary]
+              response.css('ovf|Item').last.add_next_sibling(newnic.doc.css('ovf|Item'))
+            end
           end
 
           if changed
@@ -1982,6 +2182,63 @@ module VagrantPlugins
 
 
         ##
+        # Add metadata
+        def set_vapp_metadata(id, data)
+          task_id = set_metadata "vApp/vapp-#{id}", data
+          task_id
+        end
+
+
+        ##
+        # Add metadata
+        def set_vm_metadata(id, data)
+          task_id = set_metadata "vApp/vm-#{id}", data
+          task_id
+        end
+
+
+        ##
+        # Add metadata
+        def set_metadata(link, data)
+          params = {
+            'method'  => :post,
+            'command' => "/#{link}/metadata"
+          }
+
+          md = Nokogiri::XML::Builder.new do |xml|
+            xml.Metadata('xmlns' => 'http://www.vmware.com/vcloud/v1.5',
+                         'xmlns:xsi' => 'http://www.w3.org/2001/XMLSchema-instance',
+                         'type' => 'application/vnd.vmware.vcloud.metadata+xml') do
+              data.each do |d|
+                xml.MetadataEntry('type' => 'application/vnd.vmware.vcloud.metadata.value+xml') {
+                  xml.Key(d[0])
+                  if d[1].kind_of?(Integer)
+                    typ = 'MetadataNumberValue'
+                  elsif !!d[1] == d[1] # boolean
+                    typ = 'MetadataBooleanValue'
+                  else
+                    typ = 'MetadataStringValue'
+                  end
+                  xml.TypedValue('xsi:type' => typ) {
+                    xml.Value(d[1])
+                  }
+                }
+              end
+            end
+          end
+
+          _response, headers = send_request(
+            params,
+            md.to_xml,
+            'application/vnd.vmware.vcloud.metadata+xml'
+          )
+
+          task_id = URI(headers['Location']).path.gsub('/api/task/', '')
+          task_id
+
+        end
+
+        ##
         # Fetch details about a given VM
         def get_vm(vm_id)
           params = {
@@ -1992,58 +2249,46 @@ module VagrantPlugins
 
           response, _headers = send_request(params)
 
-          os_desc = response.css(
-            'ovf|OperatingSystemSection ovf|Description'
-          ).first.text
+          hypervisor_enabled = response[:nestedHypervisorEnabled]
+          os_desc = response.css('ovf|OperatingSystemSection ovf|Description').first.text
 
           networks = {}
+          primary_network = response.css('PrimaryNetworkConnectionIndex').first.text.to_i
           response.css('NetworkConnection').each do |network|
             ip = network.css('IpAddress').first
             ip = ip.text if ip
+            primary = false
+            primary = true if network.css('NetworkConnectionIndex').first.text.to_i == primary_network
 
             networks[network['network']] = {
-              :index              => network.css(
-                                     'NetworkConnectionIndex'
-                                     ).first.text,
+              :primary            => primary,
+              :index              => network.css('NetworkConnectionIndex').first.text,
               :ip                 => ip,
-              :is_connected       => network.css(
-                                     'IsConnected'
-                                     ).first.text,
-              :mac_address        => network.css(
-                                     'MACAddress'
-                                     ).first.text,
-              :ip_allocation_mode => network.css(
-                                     'IpAddressAllocationMode'
-                                     ).first.text
+              :is_connected       => network.css('IsConnected').first.text,
+              :mac_address        => network.css('MACAddress').first.text,
+              :ip_allocation_mode => network.css('IpAddressAllocationMode').first.text
             }
           end
 
-          admin_password = response.css(
-            'GuestCustomizationSection AdminPassword'
-          ).first
+          admin_password = response.css('GuestCustomizationSection AdminPassword').first
           admin_password = admin_password.text if admin_password
 
           # make the lines shorter by adjusting the nokogiri css namespace
           guest_css = response.css('GuestCustomizationSection')
           guest_customizations = {
             :enabled                => guest_css.css('Enabled').first.text,
-            :admin_passwd_enabled   => guest_css.css(
-                                       'AdminPasswordEnabled'
-                                       ).first.text,
-            :admin_passwd_auto      => guest_css.css(
-                                       'AdminPasswordAuto'
-                                       ).first.text,
+            :admin_passwd_enabled   => guest_css.css('AdminPasswordEnabled').first.text,
+            :admin_passwd_auto      => guest_css.css('AdminPasswordAuto').first.text,
             :admin_passwd           => admin_password,
-            :reset_passwd_required  => guest_css.css(
-                                       'ResetPasswordRequired'
-                                       ).first.text,
+            :reset_passwd_required  => guest_css.css('ResetPasswordRequired').first.text,
             :computer_name          => guest_css.css('ComputerName').first.text
           }
 
           {
             :os_desc              => os_desc,
             :networks             => networks,
-            :guest_customizations => guest_customizations
+            :guest_customizations => guest_customizations,
+            :hypervisor_enabled   => hypervisor_enabled
           }
         end
       end # Class Version 5.1

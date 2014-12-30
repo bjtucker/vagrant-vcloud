@@ -16,14 +16,25 @@ module VagrantPlugins
           b.use ConfigValidate
           b.use PowerOn
           b.use Call, IsCreated do |env, b2|
-            unless env[:bridged_network]
+            unless env[:bridged_network] || env[:advanced_network]
               b2.use HandleNATPortCollisions
               b2.use ForwardPorts
             end
+            cfg = env[:machine].provider_config
+            if cfg.power_on.nil? || cfg.power_on == true
+              if cfg.ssh_enabled.nil? || cfg.ssh_enabled == true
+                b2.use WaitForCommunicator, [:starting, :running]
+              end
+            end
+            b2.use Provision
+            if cfg.power_on.nil? || cfg.power_on == true # can't ssh if not on
+              if cfg.ssh_enabled.nil? || cfg.ssh_enabled == true  # can't sync if ssh is disabled
+                if cfg.sync_enabled.nil? || cfg.sync_enabled == true
+                  b2.use SyncFolders
+                end
+              end
+            end
           end
-          b.use WaitForCommunicator, [:starting, :running]
-          b.use Provision
-          b.use SyncFolders
         end
       end
 
@@ -111,7 +122,7 @@ module VagrantPlugins
                     # Check if the network is bridged
                     b4.use Call, IsBridged do |env4, b5|
                       # if it's not, delete port forwardings.
-                      b5.use UnmapPortForwardings unless env4[:bridged_network]
+                      b5.use UnmapPortForwardings unless env4[:bridged_network] || env4[:advanced_network]
                     end
                     b4.use PowerOffVApp
                     b4.use DestroyVApp
