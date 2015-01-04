@@ -1,8 +1,11 @@
 [Vagrant](http://www.vagrantup.com) provider for VMware vCloud Director®
 =============
 
-[Version 0.4.3](../../releases/tag/v0.4.3) has been released!
+[Version 0.4.4](../../releases/tag/v0.4.4) has been released!
 -------------
+
+This is my personal version with the [PR#55](https://github.com/frapposelli/vagrant-vcloud/pull/55) to reduce the number of GET requests,
+the [PR#104](https://github.com/frapposelli/vagrant-vcloud/pull/104) with many improvements like the `vapp_name` and the [PR#109](https://github.com/frapposelli/vagrant-vcloud/pull/109) to enable TLSv1.
 
 Please note that this software is still Alpha/Beta quality and is not recommended for production usage.
 
